@@ -7,7 +7,7 @@ An end-to-end sample that provisions, in code:
 | 1 | `01_create_guardrail.py` | A guardrail (Responsible AI policy) on the Foundry account |
 | 2 | `02_create_toolbox.py` | Two telco skills, a toolbox containing tools + those skills, with the guardrail attached |
 | 3 | `03_deploy_hosted_agent.py` | Uploads the agent source, waits for the version to go active, and routes the endpoint to it |
-| 4 | `04_invoke_agent.py` | Smoke-tests a deployed agent |
+| 4 | `04_invoke_hosted_agent.py` | Smoke-tests a deployed agent |
 
 Plus two optional programs:
 
@@ -28,7 +28,7 @@ usage, outages, and connectivity troubleshooting — using **dummy data**.
 01_create_guardrail.py         guardrail as an ARM RAI policy
 02_create_toolbox.py           publish skills + create/promote a toolbox version
 03_deploy_hosted_agent.py      zip source + create_version_from_code + traffic routing
-04_invoke_agent.py             invoke a deployed agent
+04_invoke_hosted_agent.py      invoke a deployed agent
 05_update_toolbox.py           add a key-authenticated MCP server to the toolbox
 06_deploy_prompt_agent.py      prompt agent over the same toolbox and guardrail
 07_invoke_prompt_agent.py      invoke the prompt agent (agent_reference pattern)
@@ -82,7 +82,7 @@ Fill in `.env`:
 python 01_create_guardrail.py     # RAI policy on the Foundry account
 python 02_create_toolbox.py       # publish skills -> toolbox version -> promote to default
 python 03_deploy_hosted_agent.py  # upload source, wait for active, route traffic
-python 04_invoke_agent.py         # smoke test
+python 04_invoke_hosted_agent.py  # smoke test
 ```
 
 Step 3 takes a few minutes: Foundry builds the container remotely from
@@ -112,14 +112,14 @@ call fails with `401`.
 ### 5. Talk to it
 
 ```powershell
-python 04_invoke_agent.py "My number is 555-0199. Why is my phone showing SOS only?"
+python 04_invoke_hosted_agent.py "My number is 555-0199. Why is my phone showing SOS only?"
 ```
 
 Pass several prompts to hold a multi-turn conversation — the script threads
 `previous_response_id` between them:
 
 ```powershell
-python 04_invoke_agent.py "I'm on 555-0142" "Am I about to go over my data?" "What would the Unlimited plan cost me instead?"
+python 04_invoke_hosted_agent.py "I'm on 555-0142" "Am I about to go over my data?" "What would the Unlimited plan cost me instead?"
 ```
 
 ## Sample prompts
@@ -256,7 +256,7 @@ The two agents are invoked differently, which is why there are two invoke script
 | Has its own endpoint | Yes | No — lives in the project |
 | Client | `get_openai_client(agent_name=...)` | `get_openai_client()` |
 | Identifies the agent | The bound endpoint | `extra_body={"agent_reference": ...}` per request |
-| Script | `04_invoke_agent.py` | `07_invoke_prompt_agent.py` |
+| Script | `04_invoke_hosted_agent.py` | `07_invoke_prompt_agent.py` |
 
 | | Hosted agent (step 3) | Prompt agent (step 6) |
 |---|---|---|

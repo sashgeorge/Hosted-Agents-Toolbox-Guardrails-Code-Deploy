@@ -3,7 +3,7 @@
 Uses the project's OpenAI-compatible client bound to the agent, and threads
 `previous_response_id` so follow-up turns keep context.
 
-Run: python 04_invoke_agent.py [--agent <name>] ["question"] ["another question"]
+Run: python 04_invoke_hosted_agent.py [--agent <name>] ["question"] ["another question"]
 
 Defaults to the hosted agent. Pass `--agent telco-prompt-agent` to target the
 prompt agent from 06_deploy_prompt_agent.py.
