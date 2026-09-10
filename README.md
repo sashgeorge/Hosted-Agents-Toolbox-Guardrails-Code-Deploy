@@ -6,14 +6,18 @@ An end-to-end sample that provisions, in code:
 |---|---|---|
 | 1 | `01_create_guardrail.py` | A guardrail (Responsible AI policy) on the Foundry account |
 | 2 | `02_create_toolbox.py` | Two telco skills, a toolbox containing tools + those skills, with the guardrail attached |
-| 3 | `03_deploy_agent.py` | Uploads the agent source, waits for the version to go active, and routes the endpoint to it |
-| 4 | `04_invoke_agent.py` | Smoke-tests the deployed agent |
+| 3 | `03_deploy_hosted_agent.py` | Uploads the agent source, waits for the version to go active, and routes the endpoint to it |
+| 4 | `04_invoke_agent.py` | Smoke-tests a deployed agent |
 
-Plus an optional maintenance script:
+Plus two optional programs:
 
 | Script | What it does |
 |---|---|
 | `05_update_toolbox.py` | Adds an authenticated remote MCP server to the existing toolbox |
+| `06_deploy_prompt_agent.py` | Deploys a **prompt agent** using the same guardrail and toolbox — no container, no code |
+| `07_invoke_prompt_agent.py` | Invokes the prompt agent, with MCP approval and guardrail handling |
+
+See [TERRAFORM.md](TERRAFORM.md) for what of this can be expressed as Terraform.
 
 The agent answers telco questions — plans and pricing, billing and overages, data
 usage, outages, and connectivity troubleshooting — using **dummy data**.
@@ -23,9 +27,11 @@ usage, outages, and connectivity troubleshooting — using **dummy data**.
 ```
 01_create_guardrail.py         guardrail as an ARM RAI policy
 02_create_toolbox.py           publish skills + create/promote a toolbox version
-03_deploy_agent.py             zip source + create_version_from_code + traffic routing
-04_invoke_agent.py             invoke the deployed agent
+03_deploy_hosted_agent.py      zip source + create_version_from_code + traffic routing
+04_invoke_agent.py             invoke a deployed agent
 05_update_toolbox.py           add a key-authenticated MCP server to the toolbox
+06_deploy_prompt_agent.py      prompt agent over the same toolbox and guardrail
+07_invoke_prompt_agent.py      invoke the prompt agent (agent_reference pattern)
 config.py                      .env loading and resource naming
 foundry_client.py              REST helpers (ARM guardrail + multipart skill upload)
 skills/
@@ -36,6 +42,7 @@ src/telco_support_agent/
   toolbox_mcp.py               MCP client for the toolbox endpoint
   telco_data.py                dummy back-office data + local function tools
   requirements.txt             built remotely by Foundry at deploy time
+TERRAFORM.md                   what is and isn't expressible as Terraform
 ```
 
 ## How to run this program
@@ -74,7 +81,7 @@ Fill in `.env`:
 ```powershell
 python 01_create_guardrail.py     # RAI policy on the Foundry account
 python 02_create_toolbox.py       # publish skills -> toolbox version -> promote to default
-python 03_deploy_agent.py         # upload source, wait for active, route traffic
+python 03_deploy_hosted_agent.py  # upload source, wait for active, route traffic
 python 04_invoke_agent.py         # smoke test
 ```
 
@@ -141,10 +148,10 @@ promotes it.
 
 | You changed | Re-run |
 |---|---|
-| Agent code under `src/telco_support_agent/` | `python 03_deploy_agent.py` |
+| Agent code under `src/telco_support_agent/` | `python 03_deploy_hosted_agent.py` |
 | A `SKILL.md`, or the toolbox tool list | `python 02_create_toolbox.py` (no redeploy; start a new session to pick it up) |
 | Guardrail controls | `python 01_create_guardrail.py` (applies immediately) |
-
+| Prompt agent instructions | `python 06_deploy_prompt_agent.py` |
 ## Adding a remote MCP server
 
 `05_update_toolbox.py` adds an authenticated MCP server to the toolbox without
@@ -160,12 +167,17 @@ touching the agent. It does two things:
 Configure it in `.env`:
 
 ```dotenv
-DYNAMIC_WF_MCP_URL="https://<your-mcp-host>"
+DYNAMIC_WF_MCP_URL="https://<your-mcp-host>/mcp"
 DYNAMIC_WF_MCP_HEADER="x-api-key"
 DYNAMIC_WF_MCP_KEY="<secret>"
 DYNAMIC_WF_MCP_CONNECTION_NAME="dynamic-wf-mcp"
 DYNAMIC_WF_MCP_SERVER_LABEL="dynamicwf"
 ```
+
+> **Use the full MCP path, not just the host.** Most servers answer on `/mcp`.
+> Pointing at the bare host makes Foundry POST to `/`, which typically returns
+> `405` and surfaces as `Initialization timed out` when the agent enumerates tools.
+> Confirm with a direct `initialize` POST before registering the URL.
 
 Then:
 
@@ -191,6 +203,8 @@ runtime confirm each call before invoking it.
 | `session_not_ready` retries then fails | Container crashes at startup | Run locally first (see below) to see the traceback |
 | Agent answers but never cites plan prices | Toolbox call failing | Confirm the role assignment in step 4 |
 | `tools/list` returns no MCP tools | Connection credentials wrong, or server unreachable | Check the connection target and key; call the MCP server directly to test |
+| `Failed to fetch agentic identity access token` (400) | The connection has no `audience` | Set `audience` on the connection — `https://ai.azure.com` for a toolbox |
+| `Initialization timed out` for one tool source | MCP `server_url` missing its path | Use the full path (usually `/mcp`), not the bare host |
 | `content_filter` 400 on a benign prompt | Guardrail too strict | Loosen `severityThreshold` in `01_create_guardrail.py` and re-run |
 
 ## Run the agent locally
@@ -215,6 +229,53 @@ curl -X POST http://localhost:8088/responses -H "Content-Type: application/json"
 
 Your own `az login` identity is used locally, so it needs **Azure AI User** on the
 project too.
+
+## Prompt agent (the no-code alternative)
+
+`06_deploy_prompt_agent.py` deploys the same telco assistant as a **prompt
+agent** — defined entirely by model, instructions, and tools, with no container
+and no code. It reuses steps 1 and 2 unchanged:
+
+```powershell
+python 06_deploy_prompt_agent.py
+python 07_invoke_prompt_agent.py "Which plan suits 45 GB a month?"
+```
+
+It wires the toolbox in through a project connection with `UserEntraToken` auth
+and audience `https://ai.azure.com`, so the caller's identity is passed through to
+the toolbox and no secret is stored on the connection.
+
+> **The `audience` is mandatory.** Every identity-based connection auth type needs
+> one. Without it the agent fails at runtime with
+> `Failed to fetch agentic identity access token with status code: 400`.
+
+The two agents are invoked differently, which is why there are two invoke scripts:
+
+| | Hosted agent | Prompt agent |
+|---|---|---|
+| Has its own endpoint | Yes | No — lives in the project |
+| Client | `get_openai_client(agent_name=...)` | `get_openai_client()` |
+| Identifies the agent | The bound endpoint | `extra_body={"agent_reference": ...}` per request |
+| Script | `04_invoke_agent.py` | `07_invoke_prompt_agent.py` |
+
+| | Hosted agent (step 3) | Prompt agent (step 6) |
+|---|---|---|
+| Definition | Container built from your source | Model + instructions + tools |
+| Deploy time | Minutes (remote build) | Seconds |
+| Toolbox access | MCP client in your code | `mcp` tool on the definition |
+| Local functions in `telco_data.py` | Yes | **No** |
+| Orchestration | Full control of the loop | Platform-managed |
+| Guardrail | `rai_config` | `rai_config` (same policy) |
+
+The key difference is the missing row: a prompt agent has no container, so none of
+the dummy back-office functions (`lookup_subscriber`, `estimate_bill`,
+`check_network_outage`) exist. It answers from the toolbox only — the skills and
+their bundled reference data, the code interpreter, and any MCP server added by
+`05_update_toolbox.py`. Its instructions tell it to say so and offer a handoff when
+a question needs a live account record. To give a prompt agent that data, expose it
+as an MCP server and add it to the toolbox.
+
+Both agents need the **Azure AI User** role on the project to call the toolbox.
 
 ## How the pieces connect
 

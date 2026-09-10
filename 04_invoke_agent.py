@@ -1,9 +1,12 @@
-"""Step 4 — smoke-test the deployed agent, and check that the guardrail blocks.
+"""Smoke-test a deployed agent, and check that the guardrail blocks.
 
 Uses the project's OpenAI-compatible client bound to the agent, and threads
 `previous_response_id` so follow-up turns keep context.
 
-Run: python 04_invoke_agent.py ["your question"] ["another question"]
+Run: python 04_invoke_agent.py [--agent <name>] ["question"] ["another question"]
+
+Defaults to the hosted agent. Pass `--agent telco-prompt-agent` to target the
+prompt agent from 06_deploy_prompt_agent.py.
 """
 
 import sys
@@ -39,16 +42,29 @@ def create_with_retry(client, **kwargs):
             time.sleep(READY_SECONDS)
 
 
+def parse_args() -> tuple[str, list[str]]:
+    args = sys.argv[1:]
+    agent = config.AGENT_NAME
+    if "--agent" in args:
+        i = args.index("--agent")
+        if i + 1 >= len(args):
+            raise SystemExit("--agent needs an agent name")
+        agent = args[i + 1]
+        args = args[:i] + args[i + 2:]
+    return agent, args or DEFAULT_PROMPTS
+
+
 def main() -> None:
     config.require("PROJECT_ENDPOINT")
-    prompts = sys.argv[1:] or DEFAULT_PROMPTS
+    agent_name, prompts = parse_args()
+    print(f"Agent: {agent_name}")
 
     with (
         DefaultAzureCredential() as credential,
         AIProjectClient(
             endpoint=config.PROJECT_ENDPOINT, credential=credential, allow_preview=True
         ) as project,
-        project.get_openai_client(agent_name=config.AGENT_NAME) as client,
+        project.get_openai_client(agent_name=agent_name) as client,
     ):
         previous_response_id = None
         for prompt in prompts:

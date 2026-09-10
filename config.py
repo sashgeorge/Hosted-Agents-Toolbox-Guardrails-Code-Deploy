@@ -25,7 +25,15 @@ ACCOUNT_NAME = os.getenv("AZURE_AI_ACCOUNT_NAME", "")
 GUARDRAIL_NAME = os.getenv("GUARDRAIL_NAME", "telco-agent-guardrail")
 TOOLBOX_NAME = os.getenv("TOOLBOX_NAME", "telco-toolbox")
 AGENT_NAME = os.getenv("AGENT_NAME", "telco-support-agent")
+PROMPT_AGENT_NAME = os.getenv("PROMPT_AGENT_NAME", "telco-prompt-agent")
 ENABLE_EGRESS_GUARDRAIL = os.getenv("ENABLE_EGRESS_GUARDRAIL", "false").lower() == "true"
+
+# --- Connection the prompt agent uses to reach the toolbox ------------------
+TOOLBOX_CONNECTION_NAME = os.getenv("TOOLBOX_CONNECTION_NAME", "telco-toolbox-connection")
+TOOLBOX_SERVER_LABEL = os.getenv("TOOLBOX_SERVER_LABEL", "telcotoolbox")
+# Identity-based connection auth fails with HTTP 400 unless an audience is set.
+TOOLBOX_CONNECTION_AUTH = os.getenv("TOOLBOX_CONNECTION_AUTH", "UserEntraToken")
+TOOLBOX_AUDIENCE = os.getenv("TOOLBOX_AUDIENCE", "https://ai.azure.com")
 
 # --- Remote MCP server added to the toolbox by 05_update_toolbox.py ---------
 MCP_URL = os.getenv("DYNAMIC_WF_MCP_URL", "")

@@ -9,7 +9,7 @@ step 2 is wired in through environment variables.
 
 Each run creates a new immutable version and routes 100% of endpoint traffic to it.
 
-Run: python 03_deploy_agent.py
+Run: python 03_deploy_hosted_agent.py
 """
 
 import tempfile

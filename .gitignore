@@ -1,6 +1,9 @@
 # Secrets and local environment
 .env
 
+# Local scratch / reference files
+Linda.py
+
 # Python
 __pycache__/
 *.py[cod]
