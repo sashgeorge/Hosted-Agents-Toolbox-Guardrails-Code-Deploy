@@ -1,0 +1,16 @@
+{
+  "name": "@@MEMORY_STORE_NAME@@",
+  "description": "Long-term memory for the Contoso Telco support agents.",
+  "definition": {
+    "kind": "default",
+    "chat_model": "@@MEMORY_CHAT_MODEL@@",
+    "embedding_model": "@@MEMORY_EMBEDDING_MODEL@@",
+    "options": {
+      "user_profile_enabled": true,
+      "user_profile_details": "Contoso Telco customer facts worth remembering across conversations: current plan and add-ons, number of lines, typical monthly data usage, device model, home area code, roaming and travel habits, billing preferences such as autopay or paperless, accessibility needs, and recurring problems the customer has reported. Never store passwords, SIM PINs, PUK codes, or payment card numbers.",
+      "chat_summary_enabled": true,
+      "procedural_memory_enabled": true,
+      "default_ttl_seconds": 0
+    }
+  }
+}

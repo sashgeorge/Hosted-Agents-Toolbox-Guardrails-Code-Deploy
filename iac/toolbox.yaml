@@ -1,0 +1,30 @@
+# Toolbox definition — tools, skills, the MCP server, and the guardrail.
+#
+# Deployed with:  azd ai toolbox create telco-toolbox --from-file <rendered file>
+#
+# @@TOKENS@@ are substituted by scripts/postprovision.ps1 from azd environment
+# values, which come from the Bicep outputs in infra/.
+#
+# The remote MCP server is attached through a project connection rather than an
+# inline URL, so its API key stays in the connection (created in Bicep) and never
+# appears in this file.
+
+name: telco-toolbox
+description: Tools and skills for the Contoso Telco support agent.
+
+connections:
+  - name: '@@DYNAMIC_WF_MCP_CONNECTION_NAME@@'
+
+skills:
+  - name: telco-plan-advisor
+  - name: telco-troubleshooting
+
+tools:
+  - type: code_interpreter
+    name: telco_calculator
+
+# The guardrail, enforced at the toolbox layer independently of the model-level
+# and agent-level filters. Full ARM resource id, not the bare policy name.
+policies:
+  rai_config:
+    rai_policy_name: '@@AZURE_RAI_POLICY_ID@@'

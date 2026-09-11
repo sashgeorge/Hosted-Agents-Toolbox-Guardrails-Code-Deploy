@@ -2,16 +2,19 @@
 
 # One `azd up` builds the whole sample, in this order:
 #
-#   provision       Foundry account, project, model deployments   (this file)
-#   postprovision   guardrail -> skills + toolbox -> MCP server
-#                   -> memory store -> prompt agent               (hook below)
+#   provision       account, project, deployments, guardrail, connections,
+#                   RBAC                                          (infra/*.bicep)
+#   postprovision   skills -> toolbox -> memory store
+#                   -> prompt agent                   (scripts/postprovision.ps1)
 #   deploy          hosted agent, using the same toolbox,
-#                   guardrail, and memory store                   (this file)
+#                   guardrail, and memory store                    (this file)
 #
-# Guardrails, skills, toolboxes, MCP servers, memory stores, and prompt agents
-# have no declarative service type in azure.yaml, so the hook creates them by
-# running the numbered scripts. The hook also writes the guardrail's ARM id back
-# with `azd env set`, which is how ${AZURE_RAI_POLICY_ID} below is populated.
+# Everything with an ARM type is declared in Bicep. Skills, toolboxes, memory
+# stores, and prompt agents have no ARM type, so the hook creates them with
+# `azd ai skill`, `azd ai toolbox`, and two `az rest` calls. No Python runs.
+#
+# ${AZURE_RAI_POLICY_ID} below is a Bicep output, surfaced automatically as an
+# azd environment variable.
 #
 # Prerequisites:
 #   azd 1.34 or later, then:
@@ -21,11 +24,6 @@
 # Setup:
 #   azd auth login
 #   azd env new dev
-#   azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.5-1
-#   azd env set TOOLBOX_NAME telco-toolbox
-#   azd env set MEMORY_STORE_NAME telco-memory
-#   azd env set MEMORY_CHAT_MODEL gpt-5.5-1
-#   azd env set MEMORY_EMBEDDING_MODEL text-embedding-3-large
 #   # Optional, to include the remote MCP server in the toolbox:
 #   azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp
 #   azd env set DYNAMIC_WF_MCP_KEY <secret>
@@ -34,6 +32,9 @@
 #   azd up        provision + postprovision + deploy
 #   azd deploy    hosted agent code changes only
 #   azd down      tear the environment down
+#
+# The numbered Python scripts remain as an annotated reference for the same
+# operations; they are not used by this path.
 
 requiredVersions:
   azd: '>=1.34.0'
@@ -51,36 +52,14 @@ hooks:
       shell: pwsh
       continueOnError: false
       interactive: true
-      run: python scripts/azd_postprovision.py
+      run: ./scripts/postprovision.ps1
     posix:
       shell: sh
       continueOnError: false
       interactive: true
-      run: python scripts/azd_postprovision.py
+      run: pwsh ./scripts/postprovision.ps1
 
 services:
-  ai-project:
-    host: azure.ai.project
-    deployments:
-      # Chat model for the agents and for memory extraction.
-      - name: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
-        model:
-          format: OpenAI
-          name: gpt-5.5-1
-          version: '2026-03-17'
-        sku:
-          name: GlobalStandard
-          capacity: 10
-      # The memory store requires an embedding deployment of its own.
-      - name: ${MEMORY_EMBEDDING_MODEL}
-        model:
-          format: OpenAI
-          name: text-embedding-3-large
-          version: '1'
-        sku:
-          name: Standard
-          capacity: 10
-
   telco-support-agent:
     host: azure.ai.agent
     kind: hosted
@@ -103,8 +82,6 @@ services:
     codeConfiguration:
       runtime: python_3_13
       entryPoint: main.py
-    uses:
-      - ai-project
     protocols:
       - protocol: responses
         version: 2.0.0
@@ -117,11 +94,13 @@ services:
       resources:
         cpu: '1'
         memory: 2Gi
-    # Equivalent of rai_config in 03_deploy_hosted_agent.py. Populated by the
-    # postprovision hook, which creates the guardrail and exports its ARM id.
+    # Equivalent of rai_config in 03_deploy_hosted_agent.py. The ARM id comes
+    # from the Bicep output of the same name.
     policies:
       - type: rai_policy
         raiPolicyName: ${AZURE_RAI_POLICY_ID}
 
 infra:
-  provider: microsoft.foundry
+  provider: bicep
+  path: infra
+  module: main

@@ -377,6 +377,56 @@ A real recall, after one earlier conversation:
   paperless billing would suit them, but no account changes were performed.
 ```
 
+## Infrastructure as code
+
+`azd up` builds the whole sample **without running any Python**:
+
+| Phase | What | How |
+|---|---|---|
+| provision | account, project, chat + embedding deployments, **guardrail**, project connections, RBAC | [infra/main.bicep](infra/main.bicep) |
+| postprovision | skills → toolbox → memory store → prompt agent | [scripts/postprovision.ps1](scripts/postprovision.ps1) |
+| deploy | hosted agent on the same toolbox, guardrail, and memory store | [azure.yaml](azure.yaml) |
+
+Everything with an ARM type is declared in Bicep — including the guardrail
+(`Microsoft.CognitiveServices/accounts/raiPolicies`), the MCP and toolbox
+connections, and the `Cognitive Services OpenAI User` grant the memory store
+needs. Bicep outputs surface as azd environment variables, which is how
+`${AZURE_RAI_POLICY_ID}` reaches the hosted agent definition.
+
+The rest has no ARM type, so the hook uses CLI and REST rather than Python:
+
+| Artifact | Mechanism |
+|---|---|
+| Skills | `azd ai skill create` / `update` from [skills/](skills) |
+| Toolbox (tools + skills + MCP + guardrail) | `azd ai toolbox create --from-file` [iac/toolbox.yaml](iac/toolbox.yaml) |
+| Memory store | `az rest` + [iac/memory-store.json](iac/memory-store.json) |
+| Prompt agent | `az rest` + [iac/prompt-agent.json](iac/prompt-agent.json) |
+
+There is no `azd ai memory` command group, so the memory store is a data-plane
+`POST`. It needs the preview header:
+
+```
+Foundry-Features: MemoryStores=V1Preview
+```
+
+```powershell
+azd auth login --tenant-id <tenant-of-your-subscription>
+azd env new dev
+azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp    # optional
+azd env set DYNAMIC_WF_MCP_KEY <secret>              # optional
+azd up
+```
+
+> **`azd` and `az` must be signed in to the same tenant.** They hold separate
+> tokens. If `azd` lands in your home tenant while the resources live in
+> another, the hook fails with `403 ... does not have permissions for
+> Microsoft.CognitiveServices/accounts/AIServices/agents/write` — and the object
+> id in that error will not match `az ad signed-in-user show`. Fix with
+> `azd auth login --tenant-id <tenant>`.
+
+The numbered Python scripts are unchanged and still work. They are the annotated
+reference for the same operations; this path does not use them.
+
 ## Scripts vs azd
 
 The numbered scripts exist to make each API call visible. They are a good way to
