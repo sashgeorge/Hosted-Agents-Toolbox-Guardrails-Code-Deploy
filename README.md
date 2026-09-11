@@ -332,17 +332,50 @@ scope on the authenticated user, never on something the caller can spoof.
 > characters than the read path does, so a scope containing `:` or `/` is stored
 > and then fails on retrieval. `memory.py` sanitizes for you.
 
+### Two gotchas worth knowing
+
+**The update is a long-running operation that only runs while you poll it.**
+Calling `begin_update_memories` and walking away extracts nothing — no error, just
+silence. `memory.py` polls it to completion on a background thread, so the
+customer never waits for extraction:
+
+```python
+poller = stores.begin_update_memories(...)
+poller.result()          # without this, nothing is extracted
+```
+
+**The memory store needs its own RBAC.** It calls the chat and embedding
+deployments as the *project's* managed identity, which by default has no access
+to them. Without it, recall fails with `401 Authentication to the Azure OpenAI
+resource failed`:
+
+```powershell
+az role assignment create `
+  --assignee-object-id <project-managed-identity-principal-id> `
+  --assignee-principal-type ServicePrincipal `
+  --role "Cognitive Services OpenAI User" `
+  --scope "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>"
+```
+
 ### Memory is an enhancement, never a dependency
 
-Every call in `memory.py` swallows its own failures. If the store is unreachable
-the agent answers without recall instead of erroring — which is exactly what
-happens today in this project, where recall returns `401` because the memory
-store cannot authenticate to the embedding deployment. Grant the project identity
-**Cognitive Services OpenAI User** on the account hosting
-`MEMORY_EMBEDDING_MODEL` to enable it.
+Every call in `memory.py` swallows its own failures, so an unreachable store
+means the agent answers without recall rather than erroring. Set
+`MEMORY_STORE_NAME` to an empty string to disable memory entirely, with no code
+change.
 
-Set `MEMORY_STORE_NAME` to an empty string to disable memory entirely, with no
-code change.
+A real recall, after one earlier conversation:
+
+```text
+# What you already know about this customer
+
+- (user_profile) The user travels to Europe four times a year.
+- (user_profile) The user strongly prefers not to receive paper bills.
+- (user_profile) A Europe roaming pack may be relevant for the user's travel.
+- (chat_summary) The user stated they travel to Europe four times a year and
+  hate paper bills. The assistant acknowledged a Europe roaming pack and
+  paperless billing would suit them, but no account changes were performed.
+```
 
 ## Scripts vs azd
 

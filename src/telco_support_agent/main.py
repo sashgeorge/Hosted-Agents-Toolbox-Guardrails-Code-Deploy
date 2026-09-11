@@ -254,7 +254,7 @@ async def handler(
         logger.exception("Agent loop failed")
         reply = f"Something went wrong handling that request: {exc}"
     else:
-        await loop.run_in_executor(None, _memory.remember, scope, user_input, reply)
+        _memory.remember(scope, user_input, reply)
 
     message = stream.add_output_item_message()
     yield message.emit_added()

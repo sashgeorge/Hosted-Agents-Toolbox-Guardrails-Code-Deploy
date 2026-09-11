@@ -13,6 +13,7 @@ than erroring.
 import logging
 import os
 import re
+import threading
 
 from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import MemorySearchOptions
@@ -27,9 +28,6 @@ _PHONE = re.compile(r"\b\d{3}-\d{4}\b")
 _UNSAFE_SCOPE = re.compile(r"[^A-Za-z0-9_-]")
 
 MAX_MEMORIES = 5
-# Seconds the service waits before extracting, so a multi-turn exchange batches
-# into one extraction pass instead of one per turn.
-UPDATE_DELAY = 60
 
 
 def scope_for(text: str, subscribers: dict, fallback: str) -> str:
@@ -90,20 +88,34 @@ class Memory:
         )
 
     def remember(self, scope: str, user_input: str, assistant_reply: str) -> None:
-        """Queue extraction from this turn. Returns without waiting for the result."""
+        """Extract memories from this turn on a background thread.
+
+        The update is a long-running operation that only executes while its poller
+        is polled — starting it and walking away extracts nothing. Polling happens
+        off the request thread so the customer is not kept waiting for it.
+        """
         if not self.enabled:
             return
+        thread = threading.Thread(
+            target=self._update,
+            args=(scope, user_input, assistant_reply),
+            daemon=True,
+        )
+        thread.start()
+
+    def _update(self, scope: str, user_input: str, assistant_reply: str) -> None:
         try:
-            self._stores.begin_update_memories(
+            poller = self._stores.begin_update_memories(
                 name=self._name,
                 scope=scope,
                 items=[
                     {"type": "message", "role": "user", "content": user_input},
                     {"type": "message", "role": "assistant", "content": assistant_reply},
                 ],
-                update_delay=UPDATE_DELAY,
             )
-            logger.info("queued memory update for %s", scope)
+            result = poller.result()
+            operations = getattr(result, "memory_operations", None) or []
+            logger.info("memory update for %s produced %d change(s)", scope, len(operations))
         except Exception as exc:  # noqa: BLE001 - never fail a turn over memory
             logger.warning("memory update failed for %s: %s", scope, exc)
 
