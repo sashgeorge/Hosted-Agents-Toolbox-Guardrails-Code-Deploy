@@ -2,8 +2,8 @@
 #
 # Deployed with:  azd ai toolbox create telco-toolbox --from-file <rendered file>
 #
-# @@TOKENS@@ are substituted by scripts/postprovision.ps1 from azd environment
-# values, which come from the Bicep outputs in infra/.
+# Placeholders below are substituted by scripts/postprovision.ps1 from azd
+# environment values, which come from the Bicep outputs in infra/.
 #
 # The remote MCP server is attached through a project connection rather than an
 # inline URL, so its API key stays in the connection (created in Bicep) and never

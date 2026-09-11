@@ -52,6 +52,10 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' = {
   }
 }
 
+// A CognitiveServices account accepts only one child operation at a time, so the
+// resources below are chained rather than left to deploy in parallel. Without
+// this the deployment fails with RequestConflict: 'Another operation is being
+// performed on the parent resource'.
 resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: account
   name: chatDeploymentName
@@ -65,6 +69,9 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-0
       name: chatModelName
     }
   }
+  dependsOn: [
+    project
+  ]
 }
 
 // The memory store cannot be created without an embedding deployment.
@@ -91,6 +98,9 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 resource guardrail 'Microsoft.CognitiveServices/accounts/raiPolicies@2026-05-15-preview' = {
   parent: account
   name: guardrailName
+  dependsOn: [
+    embeddingDeployment
+  ]
   properties: {
     mode: 'Blocking'
     basePolicyName: 'Microsoft.DefaultV2'
@@ -116,6 +126,9 @@ resource guardrail 'Microsoft.CognitiveServices/accounts/raiPolicies@2026-05-15-
 resource toolboxConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = {
   parent: project
   name: toolboxConnectionName
+  dependsOn: [
+    guardrail
+  ]
   properties: {
     category: 'RemoteTool'
     target: '${account.properties.endpoints['AI Foundry API']}api/projects/${projectName}/toolboxes/${toolboxName}/mcp?api-version=v1'
@@ -130,6 +143,9 @@ resource toolboxConnection 'Microsoft.CognitiveServices/accounts/projects/connec
 resource mcpConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = if (deployMcpConnection) {
   parent: project
   name: mcpConnectionName
+  dependsOn: [
+    toolboxConnection
+  ]
   properties: {
     category: 'RemoteTool'
     target: mcpUrl
