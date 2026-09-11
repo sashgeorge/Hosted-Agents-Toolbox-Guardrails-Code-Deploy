@@ -392,11 +392,29 @@ check. [azure.yaml](azure.yaml) shows the recommended path.
 | Model + agent + guardrail | Three scripts | One file |
 | Teardown | Manual | `azd down` |
 
-Prerequisites: `azd` 1.27.1 or later, plus the agents extension.
+Prerequisites: `azd` 1.34 or later, plus the Foundry extensions.
 
 ```powershell
-azd ext install azure.ai.agents
+azd extension upgrade --all
 ```
+
+> Earlier `azd` builds report `azure.ai.agents` as **Incompatible** and `azd up`
+> fails before it does anything.
+
+One `azd up` builds the whole sample:
+
+| Phase | What happens | Declared in |
+|---|---|---|
+| provision | Foundry account, project, chat + embedding deployments | `azure.yaml` |
+| postprovision | guardrail → skills + toolbox → MCP server → memory store → prompt agent | hook |
+| deploy | hosted agent, using the same toolbox, guardrail, and memory store | `azure.yaml` |
+
+Guardrails, skills, toolboxes, MCP servers, memory stores, and prompt agents have
+**no declarative service type** in `azure.yaml`, so
+[scripts/azd_postprovision.py](scripts/azd_postprovision.py) creates them by
+running the numbered scripts in dependency order. It also writes the guardrail's
+ARM id back with `azd env set`, which is how `${AZURE_RAI_POLICY_ID}` is populated
+before the hosted agent is deployed.
 
 First-time setup, run from the folder containing `azure.yaml`:
 
@@ -404,9 +422,15 @@ First-time setup, run from the folder containing `azure.yaml`:
 azd auth login
 azd env new dev
 
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
-azd env set AZURE_RAI_POLICY_ID "<guardrail ARM id from step 1>"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.5-1
 azd env set TOOLBOX_NAME telco-toolbox
+azd env set MEMORY_STORE_NAME telco-memory
+azd env set MEMORY_CHAT_MODEL gpt-5.5-1
+azd env set MEMORY_EMBEDDING_MODEL text-embedding-3-large
+
+# Optional, to include the remote MCP server in the toolbox:
+azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp
+azd env set DYNAMIC_WF_MCP_KEY <secret>
 
 azd up
 ```

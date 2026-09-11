@@ -97,8 +97,16 @@ def build_tools() -> list:
     ]
     # The declarative counterpart to memory.py in the hosted agent: the platform
     # handles recall, so there is no retrieval code in a prompt agent.
+    # {{$userId}} scopes memories to the signed-in caller, which is safer than
+    # deriving a scope from anything in the transcript.
+    # Do not add search_options here: create accepts it, the runtime rejects it.
     if config.MEMORY_STORE_NAME:
-        tools.append(MemorySearchPreviewTool(memory_store_name=config.MEMORY_STORE_NAME))
+        tools.append(
+            MemorySearchPreviewTool(
+                memory_store_name=config.MEMORY_STORE_NAME,
+                scope="{{$userId}}",
+            )
+        )
     return tools
 
 

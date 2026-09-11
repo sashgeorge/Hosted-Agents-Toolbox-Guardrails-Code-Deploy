@@ -1,49 +1,84 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
-# Declarative alternative to the numbered scripts.
+# One `azd up` builds the whole sample, in this order:
 #
-# The scripts in this repo show the API surface step by step. This file shows the
-# deployment path Microsoft actually recommends: one definition, idempotent,
-# multi-environment, deployed with `azd up`.
+#   provision       Foundry account, project, model deployments   (this file)
+#   postprovision   guardrail -> skills + toolbox -> MCP server
+#                   -> memory store -> prompt agent               (hook below)
+#   deploy          hosted agent, using the same toolbox,
+#                   guardrail, and memory store                   (this file)
 #
-# Covered here:      model deployment, hosted agent, guardrail, container size
-# Still scripted:    skills + toolbox (02), MCP server (05), prompt agent (06),
-#                    memory store (09)
+# Guardrails, skills, toolboxes, MCP servers, memory stores, and prompt agents
+# have no declarative service type in azure.yaml, so the hook creates them by
+# running the numbered scripts. The hook also writes the guardrail's ARM id back
+# with `azd env set`, which is how ${AZURE_RAI_POLICY_ID} below is populated.
+#
+# Prerequisites:
+#   azd 1.34 or later, then:
+#     azd extension upgrade --all
+#   Earlier azd builds report azure.ai.agents as Incompatible and `azd up` fails.
 #
 # Setup:
 #   azd auth login
 #   azd env new dev
-#   azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
-#   azd env set AZURE_RAI_POLICY_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/raiPolicies/telco-agent-guardrail"
+#   azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.5-1
 #   azd env set TOOLBOX_NAME telco-toolbox
 #   azd env set MEMORY_STORE_NAME telco-memory
+#   azd env set MEMORY_CHAT_MODEL gpt-5.5-1
+#   azd env set MEMORY_EMBEDDING_MODEL text-embedding-3-large
+#   # Optional, to include the remote MCP server in the toolbox:
+#   azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp
+#   azd env set DYNAMIC_WF_MCP_KEY <secret>
 #
 # Deploy:
-#   azd up                 # provision + deploy
-#   azd deploy             # code changes only
-#
-# Promote a second environment with the same definition:
-#   azd env new prod && azd env set ... && azd up
+#   azd up        provision + postprovision + deploy
+#   azd deploy    hosted agent code changes only
+#   azd down      tear the environment down
 
 requiredVersions:
-  azd: '>=1.27.1'
+  azd: '>=1.34.0'
 
 extensions:
   azure.ai.agents: '>=1.0.0-beta.9'
+  azure.ai.toolboxes: '>=1.0.0-beta.6'
+  azure.ai.skills: '>=1.0.0-beta.5'
 
 name: telco-support-agent
+
+hooks:
+  postprovision:
+    windows:
+      shell: pwsh
+      continueOnError: false
+      interactive: true
+      run: python scripts/azd_postprovision.py
+    posix:
+      shell: sh
+      continueOnError: false
+      interactive: true
+      run: python scripts/azd_postprovision.py
 
 services:
   ai-project:
     host: azure.ai.project
     deployments:
+      # Chat model for the agents and for memory extraction.
       - name: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
         model:
           format: OpenAI
-          name: gpt-5.4-mini
+          name: gpt-5.5-1
           version: '2026-03-17'
         sku:
           name: GlobalStandard
+          capacity: 10
+      # The memory store requires an embedding deployment of its own.
+      - name: ${MEMORY_EMBEDDING_MODEL}
+        model:
+          format: OpenAI
+          name: text-embedding-3-large
+          version: '1'
+        sku:
+          name: Standard
           capacity: 10
 
   telco-support-agent:
@@ -54,13 +89,15 @@ services:
     description: >-
       Telco customer-support agent on the Responses protocol. Answers plan,
       billing, usage, outage, and troubleshooting questions using local functions
-      plus the tools and skills published to the Foundry toolbox.
+      plus the tools and skills published to the Foundry toolbox, with long-term
+      memory scoped per subscriber.
     metadata:
       tags:
         - AI Agent Hosting
         - Responses Protocol
         - Toolbox
         - Guardrails
+        - Memory
     project: src/telco_support_agent
     language: python
     codeConfiguration:
@@ -74,14 +111,14 @@ services:
     env:
       AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
       TOOLBOX_NAME: ${TOOLBOX_NAME}
-      # Long-term memory. Blank disables recall without any code change.
+      # Blank disables recall without any code change.
       MEMORY_STORE_NAME: ${MEMORY_STORE_NAME}
     container:
       resources:
         cpu: '1'
         memory: 2Gi
-    # Equivalent of rai_config in 03_deploy_hosted_agent.py. azd maps this to
-    # rai_config.rai_policy_name on the agent definition at deploy time.
+    # Equivalent of rai_config in 03_deploy_hosted_agent.py. Populated by the
+    # postprovision hook, which creates the guardrail and exports its ARM id.
     policies:
       - type: rai_policy
         raiPolicyName: ${AZURE_RAI_POLICY_ID}
