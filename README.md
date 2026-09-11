@@ -300,11 +300,45 @@ check. [azure.yaml](azure.yaml) shows the recommended path.
 | Model + agent + guardrail | Three scripts | One file |
 | Teardown | Manual | `azd down` |
 
+Prerequisites: `azd` 1.27.1 or later, plus the agents extension.
+
+```powershell
+azd ext install azure.ai.agents
+```
+
+First-time setup, run from the folder containing `azure.yaml`:
+
 ```powershell
 azd auth login
 azd env new dev
+
 azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
 azd env set AZURE_RAI_POLICY_ID "<guardrail ARM id from step 1>"
+azd env set TOOLBOX_NAME telco-toolbox
+
+azd up
+```
+
+> **Check before the first `azd up`.** It may provision a *new* Foundry account
+> and project rather than reusing an existing one. To bind it to a project you
+> already have, run `azd ai agent init` and select that project, then confirm
+> what will happen with `azd provision --preview`.
+
+Day to day:
+
+| Command | Does |
+|---|---|
+| `azd deploy` | Code changes only — skips provisioning |
+| `azd provision` | Infrastructure only |
+| `azd up` | Both |
+| `azd down` | Tears the environment down |
+
+Promote the same definition to another environment:
+
+```powershell
+azd env new prod
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
+azd env set AZURE_RAI_POLICY_ID "<prod guardrail ARM id>"
 azd env set TOOLBOX_NAME telco-toolbox
 azd up
 ```
