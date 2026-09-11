@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+# Declarative alternative to the numbered scripts.
+#
+# The scripts in this repo show the API surface step by step. This file shows the
+# deployment path Microsoft actually recommends: one definition, idempotent,
+# multi-environment, deployed with `azd up`.
+#
+# Covered here:      model deployment, hosted agent, guardrail, container size
+# Still scripted:    skills + toolbox (02), MCP server (05), prompt agent (06)
+#
+# Setup:
+#   azd auth login
+#   azd env new dev
+#   azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
+#   azd env set AZURE_RAI_POLICY_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/raiPolicies/telco-agent-guardrail"
+#   azd env set TOOLBOX_NAME telco-toolbox
+#
+# Deploy:
+#   azd up                 # provision + deploy
+#   azd deploy             # code changes only
+#
+# Promote a second environment with the same definition:
+#   azd env new prod && azd env set ... && azd up
+
+requiredVersions:
+  azd: '>=1.27.1'
+
+extensions:
+  azure.ai.agents: '>=1.0.0-beta.9'
+
+name: telco-support-agent
+
+services:
+  ai-project:
+    host: azure.ai.project
+    deployments:
+      - name: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+        model:
+          format: OpenAI
+          name: gpt-5.4-mini
+          version: '2026-03-17'
+        sku:
+          name: GlobalStandard
+          capacity: 10
+
+  telco-support-agent:
+    host: azure.ai.agent
+    kind: hosted
+    name: telco-support-agent
+    displayName: Contoso Telco support agent
+    description: >-
+      Telco customer-support agent on the Responses protocol. Answers plan,
+      billing, usage, outage, and troubleshooting questions using local functions
+      plus the tools and skills published to the Foundry toolbox.
+    metadata:
+      tags:
+        - AI Agent Hosting
+        - Responses Protocol
+        - Toolbox
+        - Guardrails
+    project: src/telco_support_agent
+    language: python
+    codeConfiguration:
+      runtime: python_3_13
+      entryPoint: main.py
+    uses:
+      - ai-project
+    protocols:
+      - protocol: responses
+        version: 2.0.0
+    env:
+      AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+      TOOLBOX_NAME: ${TOOLBOX_NAME}
+    container:
+      resources:
+        cpu: '1'
+        memory: 2Gi
+    # Equivalent of rai_config in 03_deploy_hosted_agent.py. azd maps this to
+    # rai_config.rai_policy_name on the agent definition at deploy time.
+    policies:
+      - type: rai_policy
+        raiPolicyName: ${AZURE_RAI_POLICY_ID}
+
+infra:
+  provider: microsoft.foundry

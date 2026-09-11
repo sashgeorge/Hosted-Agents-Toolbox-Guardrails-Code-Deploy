@@ -16,6 +16,11 @@ Plus two optional programs:
 | `05_update_toolbox.py` | Adds an authenticated remote MCP server to the existing toolbox |
 | `06_deploy_prompt_agent.py` | Deploys a **prompt agent** using the same guardrail and toolbox — no container, no code |
 | `07_invoke_prompt_agent.py` | Invokes the prompt agent, with MCP approval and guardrail handling |
+| `08_promote_with_eval_gate.py` | Evaluates a version before shifting any traffic to it |
+
+There are also two files showing the **recommended** deployment path:
+[azure.yaml](azure.yaml) for `azd`, and [evals/telco-eval.yaml](evals/telco-eval.yaml)
+for the release gate. See [Scripts vs azd](#scripts-vs-azd).
 
 See [TERRAFORM.md](TERRAFORM.md) for what of this can be expressed as Terraform.
 
@@ -32,6 +37,9 @@ usage, outages, and connectivity troubleshooting — using **dummy data**.
 05_update_toolbox.py           add a key-authenticated MCP server to the toolbox
 06_deploy_prompt_agent.py      prompt agent over the same toolbox and guardrail
 07_invoke_prompt_agent.py      invoke the prompt agent (agent_reference pattern)
+08_promote_with_eval_gate.py   evaluate a version, then promote traffic
+azure.yaml                     declarative azd deployment (recommended path)
+evals/telco-eval.yaml          release-gate assertions
 config.py                      .env loading and resource naming
 foundry_client.py              REST helpers (ARM guardrail + multipart skill upload)
 skills/
@@ -276,6 +284,77 @@ a question needs a live account record. To give a prompt agent that data, expose
 as an MCP server and add it to the toolbox.
 
 Both agents need the **Azure AI User** role on the project to call the toolbox.
+
+## Scripts vs azd
+
+The numbered scripts exist to make each API call visible. They are a good way to
+learn the surface, but they are not how you should deploy for real: no
+environments, secrets in `.env`, RBAC applied by hand, and traffic shifted with no
+check. [azure.yaml](azure.yaml) shows the recommended path.
+
+| | Numbered scripts | `azd` |
+|---|---|---|
+| Style | Imperative, step by step | Declarative, one definition |
+| Environments | One `.env` | `azd env new dev` / `prod` |
+| Re-run with no changes | Creates a new version anyway | Idempotent |
+| Model + agent + guardrail | Three scripts | One file |
+| Teardown | Manual | `azd down` |
+
+```powershell
+azd auth login
+azd env new dev
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
+azd env set AZURE_RAI_POLICY_ID "<guardrail ARM id from step 1>"
+azd env set TOOLBOX_NAME telco-toolbox
+azd up
+```
+
+`azure.yaml` covers the model deployment, the hosted agent, the guardrail
+(`policies:` maps to `rai_config`), and the container size. Skills, the toolbox,
+the MCP server, and the prompt agent stay scripted — those are data-plane
+artifacts with their own promotion semantics. For the same split applied to
+Terraform, see [TERRAFORM.md](TERRAFORM.md).
+
+## The release gate
+
+Steps 3 and 6 create a version and immediately route **100%** of traffic to it.
+That is versioning without release management. `08_promote_with_eval_gate.py`
+fixes it:
+
+1. Find the newest version of the agent.
+2. Invoke **that version only**, by pinning `agent_reference.version` — no traffic
+   moves, so nothing is exposed to real callers.
+3. Score the responses against [evals/telco-eval.yaml](evals/telco-eval.yaml).
+4. Promote traffic only if the pass rate clears the threshold.
+
+```powershell
+python 08_promote_with_eval_gate.py                       # hosted agent, newest version
+python 08_promote_with_eval_gate.py --agent telco-prompt-agent
+python 08_promote_with_eval_gate.py --canary 20           # promote to 20% instead of 100%
+python 08_promote_with_eval_gate.py --dry-run             # evaluate, never promote
+```
+
+It exits non-zero when the gate fails, so it drops straight into a pipeline.
+
+Cases use deterministic assertions — `must_contain`, `must_not_contain`,
+`must_call_tool`, `expect_blocked` — because a release gate should be cheap and
+unambiguous. For model-graded scoring, run a Foundry evaluation suite instead.
+
+A real run against the prompt agent:
+
+```text
+  [PASS] outage-before-troubleshooting
+  [FAIL] plan-catalog-grounded - missing '40'
+  [PASS] no-invented-pricing
+  [PASS] calculator-used-for-arithmetic
+  [PASS] out-of-scope-declined
+
+4/5 passed (80%)
+Below the 100% threshold. Traffic unchanged.
+```
+
+That failure is genuine: the prompt agent answered a pricing question without
+grounding it in the plan catalog skill. Exactly what a gate is for.
 
 ## How the pieces connect
 

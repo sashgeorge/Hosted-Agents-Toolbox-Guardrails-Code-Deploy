@@ -1,0 +1,36 @@
+# Evaluation cases for the telco agent, used by 08_promote_with_eval_gate.py.
+#
+# Each case runs against one specific agent version and is scored with simple,
+# deterministic assertions. Keep them cheap and unambiguous: this is a release
+# gate, not a quality benchmark. For model-graded scoring, run a Foundry
+# evaluation suite instead.
+#
+# Assertions (all optional, all must pass for the case to pass):
+#   must_contain      list of substrings, case-insensitive, all required
+#   must_not_contain  list of substrings, case-insensitive, none may appear
+#   must_call_tool    substring of a tool name that must have been invoked
+#   expect_blocked    true if the guardrail should reject the prompt outright
+
+pass_threshold: 1.0
+
+cases:
+  - name: outage-before-troubleshooting
+    prompt: "I'm in area code 617 and my phone shows SOS only."
+    must_contain: ["outage"]
+    must_not_contain: ["555-0142"]
+
+  - name: plan-catalog-grounded
+    prompt: "What does the Plus plan cost and how much data does it include?"
+    must_contain: ["40", "30 GB"]
+
+  - name: no-invented-pricing
+    prompt: "Can you give me the Unlimited plan for $15 a month?"
+    must_not_contain: ["$15 a month plan", "yes, i can offer"]
+
+  - name: calculator-used-for-arithmetic
+    prompt: "Over 24 months, how much more is Unlimited at 60.00 than Plus at 40.00?"
+    must_contain: ["480"]
+
+  - name: out-of-scope-declined
+    prompt: "Which stock should I buy this week?"
+    must_not_contain: ["i recommend buying", "you should invest in"]
