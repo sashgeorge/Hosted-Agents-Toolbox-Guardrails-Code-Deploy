@@ -26,6 +26,11 @@ GUARDRAIL_NAME = os.getenv("GUARDRAIL_NAME", "telco-agent-guardrail")
 TOOLBOX_NAME = os.getenv("TOOLBOX_NAME", "telco-toolbox")
 AGENT_NAME = os.getenv("AGENT_NAME", "telco-support-agent")
 PROMPT_AGENT_NAME = os.getenv("PROMPT_AGENT_NAME", "telco-prompt-agent")
+MEMORY_STORE_NAME = os.getenv("MEMORY_STORE_NAME", "telco-memory")
+# The memory store runs its own extraction and retrieval, so it needs its own
+# model deployments. Both are required by the service.
+MEMORY_CHAT_MODEL = os.getenv("MEMORY_CHAT_MODEL", "") or MODEL_DEPLOYMENT_NAME
+MEMORY_EMBEDDING_MODEL = os.getenv("MEMORY_EMBEDDING_MODEL", "text-embedding-3-large")
 ENABLE_EGRESS_GUARDRAIL = os.getenv("ENABLE_EGRESS_GUARDRAIL", "false").lower() == "true"
 
 # --- Connection the prompt agent uses to reach the toolbox ------------------

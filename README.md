@@ -17,6 +17,7 @@ Plus two optional programs:
 | `06_deploy_prompt_agent.py` | Deploys a **prompt agent** using the same guardrail and toolbox — no container, no code |
 | `07_invoke_prompt_agent.py` | Invokes the prompt agent, with MCP approval and guardrail handling |
 | `08_promote_with_eval_gate.py` | Evaluates a version before shifting any traffic to it |
+| `09_create_memory_store.py` | Creates the long-term memory store both agents use |
 
 There are also two files showing the **recommended** deployment path:
 [azure.yaml](azure.yaml) for `azd`, and [evals/telco-eval.yaml](evals/telco-eval.yaml)
@@ -38,6 +39,7 @@ usage, outages, and connectivity troubleshooting — using **dummy data**.
 06_deploy_prompt_agent.py      prompt agent over the same toolbox and guardrail
 07_invoke_prompt_agent.py      invoke the prompt agent (agent_reference pattern)
 08_promote_with_eval_gate.py   evaluate a version, then promote traffic
+09_create_memory_store.py      long-term memory store
 azure.yaml                     declarative azd deployment (recommended path)
 evals/telco-eval.yaml          release-gate assertions
 config.py                      .env loading and resource naming
@@ -48,6 +50,7 @@ skills/
 src/telco_support_agent/
   main.py                      Responses-protocol agent + tool-calling loop
   toolbox_mcp.py               MCP client for the toolbox endpoint
+  memory.py                    long-term memory recall and write-back
   telco_data.py                dummy back-office data + local function tools
   requirements.txt             built remotely by Foundry at deploy time
 TERRAFORM.md                   what is and isn't expressible as Terraform
@@ -284,6 +287,62 @@ a question needs a live account record. To give a prompt agent that data, expose
 as an MCP server and add it to the toolbox.
 
 Both agents need the **Azure AI User** role on the project to call the toolbox.
+
+## Long-term memory
+
+`09_create_memory_store.py` creates a Foundry **memory store** — recall that
+outlives a session. The platform extracts and retrieves memories itself, so there
+is no embedding pipeline to build.
+
+```powershell
+python 09_create_memory_store.py
+```
+
+Three kinds are extracted: `user_profile` (durable facts such as plan, device,
+travel habits), `chat_summary` (condensed past conversations), and `procedural`
+(what worked when solving this customer's problems before).
+
+The store runs its own extraction and retrieval, so it needs **its own model
+deployments** — both `chat_model` and `embedding_model` are required:
+
+```dotenv
+MEMORY_STORE_NAME="telco-memory"
+MEMORY_CHAT_MODEL="gpt-5.5-1"
+MEMORY_EMBEDDING_MODEL="text-embedding-3-large"
+```
+
+Each agent consumes it differently, which is the same split as everything else in
+this sample:
+
+| | Hosted agent | Prompt agent |
+|---|---|---|
+| How | [memory.py](src/telco_support_agent/memory.py) — you call recall and write-back | `MemorySearchPreviewTool` on the definition |
+| Control | Full: when to recall, what to inject, how to scope | Platform-managed |
+| Code | ~100 lines | One tool entry |
+
+### Scope
+
+Memories are partitioned by `scope`, and a scope should identify one customer.
+This sample uses `subscriber-<SUB-ID>` once a phone number is recognised, falling
+back to `conversation-<id>` before then — a conversation-scoped memory is not
+really long-term, so treat the fallback as a placeholder. In a real deployment,
+scope on the authenticated user, never on something the caller can spoof.
+
+> **Scope charset.** Only `A-Z a-z 0-9 - _`. The write path accepts more
+> characters than the read path does, so a scope containing `:` or `/` is stored
+> and then fails on retrieval. `memory.py` sanitizes for you.
+
+### Memory is an enhancement, never a dependency
+
+Every call in `memory.py` swallows its own failures. If the store is unreachable
+the agent answers without recall instead of erroring — which is exactly what
+happens today in this project, where recall returns `401` because the memory
+store cannot authenticate to the embedding deployment. Grant the project identity
+**Cognitive Services OpenAI User** on the account hosting
+`MEMORY_EMBEDDING_MODEL` to enable it.
+
+Set `MEMORY_STORE_NAME` to an empty string to disable memory entirely, with no
+code change.
 
 ## Scripts vs azd
 

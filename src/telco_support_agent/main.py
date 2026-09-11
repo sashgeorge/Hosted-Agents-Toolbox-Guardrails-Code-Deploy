@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 
 import telco_data
 import toolbox_mcp
+from memory import from_environment, scope_for
 
 load_dotenv(override=False)
 logging.basicConfig(level=logging.INFO)
@@ -46,9 +47,9 @@ MODEL = os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]
 MAX_TOOL_ROUNDS = 8
 
 _credential = DefaultAzureCredential()
-_responses = AIProjectClient(
-    endpoint=PROJECT_ENDPOINT, credential=_credential
-).get_openai_client().responses
+_project = AIProjectClient(endpoint=PROJECT_ENDPOINT, credential=_credential)
+_responses = _project.get_openai_client().responses
+_memory = from_environment(_project)
 _toolbox_token = get_bearer_token_provider(_credential, "https://ai.azure.com/.default")
 
 BASE_INSTRUCTIONS = """You are Max, a customer support agent for Contoso Telco.
@@ -125,12 +126,13 @@ def _dispatch_tool(name: str, arguments: dict) -> str:
     return _toolbox.call_tool(name, arguments)
 
 
-def _run_agent_loop(input_items: list[dict]) -> str:
+def _run_agent_loop(input_items: list[dict], recalled: str = "") -> str:
     _ensure_ready()
+    instructions = _instructions + recalled
     for _ in range(MAX_TOOL_ROUNDS):
         response = _responses.create(
             model=MODEL,
-            instructions=_instructions,
+            instructions=instructions,
             input=input_items,
             tools=_tool_definitions,
             tool_choice="auto",
@@ -231,9 +233,19 @@ async def handler(
         history = []
 
     loop = asyncio.get_running_loop()
+
+    # Scope memory to the subscriber once the transcript identifies one.
+    transcript = " ".join(
+        str(item.get("content", "")) for item in _build_input(user_input, history)
+    )
+    scope = scope_for(transcript, telco_data.SUBSCRIBERS, context.response_id)
+    recalled = await loop.run_in_executor(None, _memory.recall, scope, user_input)
+
     try:
         reply = await asyncio.wait_for(
-            loop.run_in_executor(None, _run_agent_loop, _build_input(user_input, history)),
+            loop.run_in_executor(
+                None, _run_agent_loop, _build_input(user_input, history), recalled
+            ),
             timeout=240.0,
         )
     except asyncio.TimeoutError:
@@ -241,6 +253,8 @@ async def handler(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Agent loop failed")
         reply = f"Something went wrong handling that request: {exc}"
+    else:
+        await loop.run_in_executor(None, _memory.remember, scope, user_input, reply)
 
     message = stream.add_output_item_message()
     yield message.emit_added()

@@ -25,6 +25,7 @@ from azure.ai.projects.models import (
     AgentEndpointConfig,
     FixedRatioVersionSelectionRule,
     MCPTool,
+    MemorySearchPreviewTool,
     PromptAgentDefinition,
     RaiConfig,
     VersionSelector,
@@ -48,6 +49,8 @@ Rules:
   offer to hand off to a human agent.
 - Politely decline anything outside Contoso Telco support.
 - Never ask for a password, full payment card number, SIM PIN, or PUK.
+- If you recall something about this customer from an earlier conversation, use it
+  as context and confirm it rather than stating it as fact.
 - Keep replies short and concrete: the answer first, then at most three next steps."""
 
 # The sample has no approval UI, so toolbox tool calls are not gated.
@@ -83,6 +86,22 @@ def upsert_toolbox_connection() -> str:
     return connection_id
 
 
+def build_tools() -> list:
+    tools = [
+        MCPTool(
+            server_label=config.TOOLBOX_SERVER_LABEL,
+            server_url=config.toolbox_mcp_url(),
+            require_approval=REQUIRE_APPROVAL,
+            project_connection_id=config.TOOLBOX_CONNECTION_NAME,
+        )
+    ]
+    # The declarative counterpart to memory.py in the hosted agent: the platform
+    # handles recall, so there is no retrieval code in a prompt agent.
+    if config.MEMORY_STORE_NAME:
+        tools.append(MemorySearchPreviewTool(memory_store_name=config.MEMORY_STORE_NAME))
+    return tools
+
+
 def main() -> None:
     config.require(
         "PROJECT_ENDPOINT", "MODEL_DEPLOYMENT_NAME",
@@ -98,17 +117,11 @@ def main() -> None:
         allow_preview=True,
     )
 
+    tools = build_tools()
     definition = PromptAgentDefinition(
         model=config.MODEL_DEPLOYMENT_NAME,
         instructions=INSTRUCTIONS,
-        tools=[
-            MCPTool(
-                server_label=config.TOOLBOX_SERVER_LABEL,
-                server_url=config.toolbox_mcp_url(),
-                require_approval=REQUIRE_APPROVAL,
-                project_connection_id=config.TOOLBOX_CONNECTION_NAME,
-            )
-        ],
+        tools=tools,
         # The guardrail from step 1 — the same policy the hosted agent uses.
         rai_config=RaiConfig(rai_policy_name=config.rai_policy_arm_id()),
     )
@@ -139,6 +152,8 @@ def main() -> None:
 
     print(f"\nGuardrail attached: {config.rai_policy_arm_id()}")
     print(f"Toolbox: {config.toolbox_mcp_url()}")
+    print(f"Tools: {len(tools)} "
+          f"({'with' if config.MEMORY_STORE_NAME else 'without'} long-term memory)")
     print("\nTry it with:")
     print("  python 07_invoke_prompt_agent.py")
 

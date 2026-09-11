@@ -7,7 +7,8 @@
 # multi-environment, deployed with `azd up`.
 #
 # Covered here:      model deployment, hosted agent, guardrail, container size
-# Still scripted:    skills + toolbox (02), MCP server (05), prompt agent (06)
+# Still scripted:    skills + toolbox (02), MCP server (05), prompt agent (06),
+#                    memory store (09)
 #
 # Setup:
 #   azd auth login
@@ -15,6 +16,7 @@
 #   azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
 #   azd env set AZURE_RAI_POLICY_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/raiPolicies/telco-agent-guardrail"
 #   azd env set TOOLBOX_NAME telco-toolbox
+#   azd env set MEMORY_STORE_NAME telco-memory
 #
 # Deploy:
 #   azd up                 # provision + deploy
@@ -72,6 +74,8 @@ services:
     env:
       AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
       TOOLBOX_NAME: ${TOOLBOX_NAME}
+      # Long-term memory. Blank disables recall without any code change.
+      MEMORY_STORE_NAME: ${MEMORY_STORE_NAME}
     container:
       resources:
         cpu: '1'
