@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "chatDeploymentName": {
+      "value": "${AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-5.5-1}"
+    },
+    "embeddingDeploymentName": {
+      "value": "${MEMORY_EMBEDDING_MODEL=text-embedding-3-large}"
+    },
+    "guardrailName": {
+      "value": "${GUARDRAIL_NAME=telco-agent-guardrail}"
+    },
+    "toolboxName": {
+      "value": "${TOOLBOX_NAME=telco-toolbox}"
+    },
+    "toolboxConnectionName": {
+      "value": "${TOOLBOX_CONNECTION_NAME=telco-toolbox-connection}"
+    },
+    "mcpConnectionName": {
+      "value": "${DYNAMIC_WF_MCP_CONNECTION_NAME=dynamic-wf-mcp}"
+    },
+    "mcpHeaderName": {
+      "value": "${DYNAMIC_WF_MCP_HEADER=x-api-key}"
+    },
+    "mcpUrl": {
+      "value": "${DYNAMIC_WF_MCP_URL=}"
+    },
+    "mcpApiKey": {
+      "value": "${DYNAMIC_WF_MCP_KEY=}"
+    }
+  }
+}
