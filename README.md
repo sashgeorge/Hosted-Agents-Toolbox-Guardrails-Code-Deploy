@@ -379,13 +379,22 @@ A real recall, after one earlier conversation:
 
 ## Infrastructure as code
 
-`azd up` builds the whole sample **without running any Python**:
+`azd up` provisions the platform and every data-plane artifact **without running
+any Python**:
 
 | Phase | What | How |
 |---|---|---|
 | provision | account, project, chat + embedding deployments, **guardrail**, project connections, RBAC | [infra/main.bicep](infra/main.bicep) |
 | postprovision | skills → toolbox → memory store → prompt agent | [scripts/postprovision.ps1](scripts/postprovision.ps1) |
-| deploy | hosted agent on the same toolbox, guardrail, and memory store | [azure.yaml](azure.yaml) |
+
+The **hosted agent is deliberately not part of this**. It is a container build
+with its own release cadence, so deploy it separately once the platform is up:
+
+```powershell
+python 03_deploy_hosted_agent.py
+```
+
+It consumes the same toolbox, guardrail, and memory store that `azd up` creates.
 
 Everything with an ARM type is declared in Bicep — including the guardrail
 (`Microsoft.CognitiveServices/accounts/raiPolicies`), the MCP and toolbox
@@ -411,11 +420,18 @@ Foundry-Features: MemoryStores=V1Preview
 
 ```powershell
 azd auth login --tenant-id <tenant-of-your-subscription>
-azd env new dev
+azd env new telco-dev
+azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
+azd env set AZURE_LOCATION westus3
 azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp    # optional
 azd env set DYNAMIC_WF_MCP_KEY <secret>              # optional
+azd provision --preview
 azd up
 ```
+
+Resource names derive from the azd environment name: `telco-dev` yields
+`rg-telco-dev`, account `telcodev<hash>`, project `telcodevproj`. The hash keeps
+the account's DNS subdomain globally unique.
 
 > **`azd` and `az` must be signed in to the same tenant.** They hold separate
 > tokens. If `azd` lands in your home tenant while the resources live in
