@@ -5,6 +5,12 @@ param accountName string
 param projectName string
 param chatDeploymentName string
 param embeddingDeploymentName string
+param chatModelName string
+param chatSkuName string
+param chatCapacity int
+param embeddingModelName string
+param embeddingSkuName string
+param embeddingCapacity int
 param guardrailName string
 param mcpUrl string
 param mcpHeaderName string
@@ -50,15 +56,14 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-0
   parent: account
   name: chatDeploymentName
   sku: {
-    name: 'GlobalStandard'
-    capacity: 10
+    name: chatSkuName
+    capacity: chatCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-5.5'
+      name: chatModelName
     }
-    raiPolicyName: guardrail.name
   }
 }
 
@@ -67,13 +72,13 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   parent: account
   name: embeddingDeploymentName
   sku: {
-    name: 'Standard'
-    capacity: 10
+    name: embeddingSkuName
+    capacity: embeddingCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'text-embedding-3-large'
+      name: embeddingModelName
     }
   }
   dependsOn: [

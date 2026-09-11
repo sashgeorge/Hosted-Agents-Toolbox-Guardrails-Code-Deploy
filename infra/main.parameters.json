@@ -14,6 +14,24 @@
     "embeddingDeploymentName": {
       "value": "${MEMORY_EMBEDDING_MODEL=text-embedding-3-large}"
     },
+    "chatModelName": {
+      "value": "${CHAT_MODEL_NAME=gpt-5.5}"
+    },
+    "chatSkuName": {
+      "value": "${CHAT_SKU_NAME=DataZoneStandard}"
+    },
+    "chatCapacity": {
+      "value": "${CHAT_CAPACITY=10}"
+    },
+    "embeddingModelName": {
+      "value": "${EMBEDDING_MODEL_NAME=text-embedding-3-large}"
+    },
+    "embeddingSkuName": {
+      "value": "${EMBEDDING_SKU_NAME=GlobalStandard}"
+    },
+    "embeddingCapacity": {
+      "value": "${EMBEDDING_CAPACITY=10}"
+    },
     "guardrailName": {
       "value": "${GUARDRAIL_NAME=telco-agent-guardrail}"
     },

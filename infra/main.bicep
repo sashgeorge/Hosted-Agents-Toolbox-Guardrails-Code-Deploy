@@ -27,6 +27,26 @@ param chatDeploymentName string = 'gpt-5.5-1'
 @description('Embedding deployment name required by the memory store.')
 param embeddingDeploymentName string = 'text-embedding-3-large'
 
+// Defaults target SKUs with spare quota. Check yours with:
+//   az cognitiveservices usage list -l <region> -o table
+@description('Underlying chat model.')
+param chatModelName string = 'gpt-5.5'
+
+@description('Chat deployment SKU. GlobalStandard quota is often exhausted first.')
+param chatSkuName string = 'DataZoneStandard'
+
+@description('Chat deployment capacity, in thousands of tokens per minute.')
+param chatCapacity int = 10
+
+@description('Underlying embedding model.')
+param embeddingModelName string = 'text-embedding-3-large'
+
+@description('Embedding deployment SKU.')
+param embeddingSkuName string = 'GlobalStandard'
+
+@description('Embedding deployment capacity.')
+param embeddingCapacity int = 10
+
 @description('Name of the guardrail (RAI policy).')
 param guardrailName string = 'telco-agent-guardrail'
 
@@ -68,6 +88,12 @@ module foundry 'foundry.bicep' = {
     projectName: projectName
     chatDeploymentName: chatDeploymentName
     embeddingDeploymentName: embeddingDeploymentName
+    chatModelName: chatModelName
+    chatSkuName: chatSkuName
+    chatCapacity: chatCapacity
+    embeddingModelName: embeddingModelName
+    embeddingSkuName: embeddingSkuName
+    embeddingCapacity: embeddingCapacity
     guardrailName: guardrailName
     mcpUrl: mcpUrl
     mcpHeaderName: mcpHeaderName
