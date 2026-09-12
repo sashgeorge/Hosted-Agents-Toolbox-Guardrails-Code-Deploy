@@ -13,6 +13,11 @@ resource lives on:
 The practical answer: use Terraform for the control plane, keep the Python
 scripts (or `azd`) for the data plane.
 
+> This repo ships a working Bicep implementation of exactly that split. See
+> [IAC.md](IAC.md) — the constraints documented there (preflight ordering,
+> CognitiveServices concurrency, quota SKUs, connection `audience`) apply equally
+> to a Terraform implementation.
+
 ## Coverage map
 
 | Sample artifact | Script | Terraform |

@@ -40,7 +40,11 @@ usage, outages, and connectivity troubleshooting — using **dummy data**.
 07_invoke_prompt_agent.py      invoke the prompt agent (agent_reference pattern)
 08_promote_with_eval_gate.py   evaluate a version, then promote traffic
 09_create_memory_store.py      long-term memory store
-azure.yaml                     declarative azd deployment (recommended path)
+azure.yaml                     azd manifest: bicep infra + postprovision hook
+infra/                         Bicep: account, project, deployments, guardrail,
+                               connections, RBAC
+iac/                           toolbox, memory store, and prompt agent templates
+scripts/postprovision.ps1      renders the templates and applies them
 evals/telco-eval.yaml          release-gate assertions
 config.py                      .env loading and resource naming
 foundry_client.py              REST helpers (ARM guardrail + multipart skill upload)
@@ -53,6 +57,7 @@ src/telco_support_agent/
   memory.py                    long-term memory recall and write-back
   telco_data.py                dummy back-office data + local function tools
   requirements.txt             built remotely by Foundry at deploy time
+IAC.md                         the full infrastructure-as-code record
 TERRAFORM.md                   what is and isn't expressible as Terraform
 ```
 
@@ -387,61 +392,26 @@ any Python**:
 | provision | account, project, chat + embedding deployments, **guardrail**, project connections, RBAC | [infra/main.bicep](infra/main.bicep) |
 | postprovision | skills → toolbox → memory store → prompt agent | [scripts/postprovision.ps1](scripts/postprovision.ps1) |
 
-The **hosted agent is deliberately not part of this**. It is a container build
-with its own release cadence, so deploy it separately once the platform is up:
-
-```powershell
-python 03_deploy_hosted_agent.py
-```
-
-It consumes the same toolbox, guardrail, and memory store that `azd up` creates.
-
-Everything with an ARM type is declared in Bicep — including the guardrail
-(`Microsoft.CognitiveServices/accounts/raiPolicies`), the MCP and toolbox
-connections, and the `Cognitive Services OpenAI User` grant the memory store
-needs. Bicep outputs surface as azd environment variables, which is how
-`${AZURE_RAI_POLICY_ID}` reaches the hosted agent definition.
-
-The rest has no ARM type, so the hook uses CLI and REST rather than Python:
-
-| Artifact | Mechanism |
-|---|---|
-| Skills | `azd ai skill create` / `update` from [skills/](skills) |
-| Toolbox (tools + skills + MCP + guardrail) | `azd ai toolbox create --from-file` [iac/toolbox.yaml](iac/toolbox.yaml) |
-| Memory store | `az rest` + [iac/memory-store.json](iac/memory-store.json) |
-| Prompt agent | `az rest` + [iac/prompt-agent.json](iac/prompt-agent.json) |
-
-There is no `azd ai memory` command group, so the memory store is a data-plane
-`POST`. It needs the preview header:
-
-```
-Foundry-Features: MemoryStores=V1Preview
-```
-
 ```powershell
 azd auth login --tenant-id <tenant-of-your-subscription>
 azd env new telco-dev
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd env set AZURE_LOCATION westus3
-azd env set DYNAMIC_WF_MCP_URL https://<host>/mcp    # optional
-azd env set DYNAMIC_WF_MCP_KEY <secret>              # optional
 azd provision --preview
 azd up
+
+python 03_deploy_hosted_agent.py   # hosted agent, separately
 ```
 
-Resource names derive from the azd environment name: `telco-dev` yields
-`rg-telco-dev`, account `telcodev<hash>`, project `telcodevproj`. The hash keeps
-the account's DNS subdomain globally unique.
+The hosted agent is deliberately outside this path — it is a container build with
+its own release cadence, and it consumes the same toolbox, guardrail, and memory
+store that `azd up` creates.
 
-> **`azd` and `az` must be signed in to the same tenant.** They hold separate
-> tokens. If `azd` lands in your home tenant while the resources live in
-> another, the hook fails with `403 ... does not have permissions for
-> Microsoft.CognitiveServices/accounts/AIServices/agents/write` — and the object
-> id in that error will not match `az ad signed-in-user show`. Fix with
-> `azd auth login --tenant-id <tenant>`.
-
-The numbered Python scripts are unchanged and still work. They are the annotated
-reference for the same operations; this path does not use them.
+**See [IAC.md](IAC.md)** for the full record: every file, the resource-naming
+rules, tunable variables, verification commands, teardown, and the constraints
+found by running it against Azure — Bicep preflight and concurrency limits, quota
+SKU selection, connection `audience`, tenant mismatches, `az rest` quoting on
+Windows, and preview feature headers.
 
 ## Scripts vs azd
 
